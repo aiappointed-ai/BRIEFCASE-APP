@@ -39,18 +39,39 @@ export function useDatabase(userId) {
     }
   }, [online, userId]);
 
-  // Realtime sync
+  // Refetch helpers (used by realtime + manual refresh)
+  const refetchPlayers = () =>
+    supabase.from('players').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setPlayers(data); });
+  const refetchNotes = () =>
+    supabase.from('coach_notes').select('*').order('created_at', { ascending: false })
+      .then(({ data }) => { if (data) setCoachNotes(data); });
+
+  // Realtime sync — players AND coach notes
   useEffect(() => {
     if (!online) return;
     const channel = supabase
-      .channel('players-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, () => {
-        supabase.from('players').select('*').order('created_at', { ascending: false })
-          .then(({ data }) => { if (data) setPlayers(data); });
-      })
+      .channel('briefcase-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, refetchPlayers)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'coach_notes' }, refetchNotes)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [online]);
+
+  // Manual refresh — re-pull everything on demand
+  const refresh = async () => {
+    if (!online) return;
+    const [cR, eR, pR, nR] = await Promise.all([
+      supabase.from('coaches').select('*').order('name'),
+      supabase.from('events').select('*').order('created_at', { ascending: false }),
+      supabase.from('players').select('*').order('created_at', { ascending: false }),
+      supabase.from('coach_notes').select('*').order('created_at', { ascending: false }),
+    ]);
+    if (cR.data) setCoaches(cR.data);
+    if (eR.data) setEvents(eR.data);
+    if (pR.data) setPlayers(pR.data);
+    if (nR.data) setCoachNotes(nR.data);
+  };
 
   // Coaches
   const cleanCoachData = (data) => {
@@ -180,12 +201,23 @@ export function useDatabase(userId) {
 
   const getMyNoteForPlayer = (playerId) => online ? (coachNotes.find(n => n.player_id === playerId && n.coach_user_id === userId) || null) : null;
   const getAllNotesForPlayer = (playerId) => coachNotes.filter(n => n.player_id === playerId);
-  const findDuplicatePlayer = (jerseyNumber, eventId) => (!jerseyNumber || !eventId) ? null : (players.find(p => p.jersey_number === jerseyNumber && p.event_id === eventId) || null);
+  const findDuplicatePlayer = (jerseyNumber, jerseyColor, eventId) => {
+    if (!jerseyNumber) return null;
+    const num = String(jerseyNumber).trim();
+    const col = (jerseyColor || '').toLowerCase();
+    const ev = eventId || null;
+    return players.find(p =>
+      String(p.jersey_number || '').trim() === num &&
+      (p.jersey_color || '').toLowerCase() === col &&
+      (p.event_id || null) === ev
+    ) || null;
+  };
 
   return {
     coaches: online ? coaches.map(c => ({ ...c, events: c.event_ids || [] })) : coaches,
     events, players, coachNotes, loading,
     saveCoach, deleteCoach, saveEvent, deleteEvent, toggleCoachEvent,
     savePlayer, deletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer,
+    refresh,
   };
 }
