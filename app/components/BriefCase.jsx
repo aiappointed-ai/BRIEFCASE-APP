@@ -23,6 +23,49 @@ function getAvatarColor(name) {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// ============ COLOUR NAMING ============
+// Showcase jersey colours (sampled from the roster sheet) + retained + catch-alls.
+const NAMED_COLORS = [
+  { name: "Red", hex: "#cc0000" },
+  { name: "Burgundy", hex: "#7a2c1d" },
+  { name: "Orange", hex: "#ff6600" },
+  { name: "Gold", hex: "#f9d877" },
+  { name: "Yellow", hex: "#ffd700" },
+  { name: "Lime", hex: "#74f94d" },
+  { name: "Green", hex: "#77a45a" },
+  { name: "Aqua", hex: "#dbe8d4" },
+  { name: "Teal", hex: "#009b8e" },
+  { name: "Sky Blue", hex: "#a8c0ef" },
+  { name: "Royal Blue", hex: "#4a78d0" },
+  { name: "Navy", hex: "#0b2a6b" },
+  { name: "Purple", hex: "#8a30f5" },
+  { name: "Pink", hex: "#deb8af" },
+  { name: "Silver", hex: "#cbcbcb" },
+  { name: "Gray", hex: "#808080" },
+  { name: "White", hex: "#ffffff" },
+  { name: "Black", hex: "#000000" },
+];
+function hexToRgb(hex) {
+  const h = (hex || "").replace("#", "");
+  if (h.length < 6) return [0, 0, 0];
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+// Maps any hex to the nearest named colour (so "blue" search matches navy, etc.)
+function colorName(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  let best = NAMED_COLORS[0], bestD = Infinity;
+  for (const c of NAMED_COLORS) {
+    const [cr, cg, cb] = hexToRgb(c.hex);
+    const d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
+    if (d < bestD) { bestD = d; best = c; }
+  }
+  return best.name;
+}
+function nameToHex(name) {
+  const m = NAMED_COLORS.find(c => c.name.toLowerCase() === (name || "").toLowerCase());
+  return m ? m.hex : null;
+}
+
 // ============ SHARED COMPONENTS ============
 function Avatar({ name, photo, size = 80 }) {
   const colors = getAvatarColor(name || "?");
@@ -133,8 +176,8 @@ const navBtn = {
 };
 
 // ============ AUTH SCREEN ============
-function AuthScreen({ onSignIn, onSignUp }) {
-  const [isSignUp, setIsSignUp] = useState(false);
+function AuthScreen({ onSignIn, onSignUp, onResetPassword }) {
+  const [mode, setMode] = useState("signin"); // signin | signup | forgot | reset-sent
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -145,8 +188,11 @@ function AuthScreen({ onSignIn, onSignUp }) {
     setError("");
     setLoading(true);
     try {
-      if (isSignUp) {
+      if (mode === "signup") {
         await onSignUp(email, password, name);
+      } else if (mode === "forgot") {
+        await onResetPassword(email);
+        setMode("reset-sent");
       } else {
         await onSignIn(email, password);
       }
@@ -174,44 +220,86 @@ function AuthScreen({ onSignIn, onSignUp }) {
 
         {/* Form */}
         <div style={{ background: "rgba(255,255,255,0.03)", borderRadius: 16, border: "1px solid rgba(255,255,255,0.06)", padding: 28 }}>
-          <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 800, color: "#f0f0f0" }}>
-            {isSignUp ? "Create Account" : "Sign In"}
-          </h2>
 
-          {isSignUp && (
-            <div style={{ marginBottom: 12 }}>
-              <FormField label="Full Name" value={name} onChange={setName} placeholder="Your name" />
-            </div>
+          {/* RESET SENT CONFIRMATION */}
+          {mode === "reset-sent" ? (
+            <>
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <div style={{ fontSize: 48, marginBottom: 12 }}>📧</div>
+                <h2 style={{ margin: "0 0 8px", fontSize: 18, fontWeight: 800, color: "#f0f0f0" }}>Check Your Email</h2>
+                <div style={{ fontSize: 13, color: "#888", lineHeight: 1.6, marginBottom: 20 }}>
+                  We sent a password reset link to <span style={{ color: "#e0e0e0", fontWeight: 600 }}>{email}</span>. Click the link in the email, then come back and sign in with your new password.
+                </div>
+                <button
+                  onClick={() => { setMode("signin"); setError(""); }}
+                  style={{ ...btnStyle, width: "100%", padding: "12px" }}
+                >
+                  Back to Sign In
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 style={{ margin: "0 0 20px", fontSize: 18, fontWeight: 800, color: "#f0f0f0" }}>
+                {mode === "signup" ? "Create Account" : mode === "forgot" ? "Reset Password" : "Sign In"}
+              </h2>
+
+              {mode === "forgot" && (
+                <div style={{ fontSize: 13, color: "#888", marginBottom: 16, lineHeight: 1.5 }}>
+                  Enter your email and we'll send you a link to reset your password.
+                </div>
+              )}
+
+              {mode === "signup" && (
+                <div style={{ marginBottom: 12 }}>
+                  <FormField label="Full Name" value={name} onChange={setName} placeholder="Your name" />
+                </div>
+              )}
+              <div style={{ marginBottom: 12 }}>
+                <FormField label="Email" value={email} onChange={setEmail} placeholder="you@example.com" />
+              </div>
+              {mode !== "forgot" && (
+                <div style={{ marginBottom: 20 }}>
+                  <FormField label="Password" value={password} onChange={setPassword} placeholder="••••••••" />
+                </div>
+              )}
+
+              {error && (
+                <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(248,113,113,0.1)", color: "#f87171", fontSize: 13, marginBottom: 16 }}>
+                  {error}
+                </div>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={loading || !email || (mode !== "forgot" && !password)}
+                style={{ ...btnStyle, width: "100%", padding: "12px", opacity: loading || !email || (mode !== "forgot" && !password) ? 0.5 : 1 }}
+              >
+                {loading ? "..." : mode === "signup" ? "Create Account" : mode === "forgot" ? "Send Reset Link" : "Sign In"}
+              </button>
+
+              {/* Forgot password link (only on sign in screen) */}
+              {mode === "signin" && (
+                <div style={{ textAlign: "center", marginTop: 12 }}>
+                  <button
+                    onClick={() => { setMode("forgot"); setError(""); }}
+                    style={{ background: "none", border: "none", color: "#888", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+              )}
+
+              <div style={{ textAlign: "center", marginTop: mode === "signin" ? 8 : 16 }}>
+                <button
+                  onClick={() => { setMode(mode === "signup" ? "signin" : mode === "forgot" ? "signin" : "signup"); setError(""); }}
+                  style={{ background: "none", border: "none", color: "#4ade80", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
+                >
+                  {mode === "signup" ? "Already have an account? Sign in" : mode === "forgot" ? "Back to Sign In" : "Need an account? Sign up"}
+                </button>
+              </div>
+            </>
           )}
-          <div style={{ marginBottom: 12 }}>
-            <FormField label="Email" value={email} onChange={setEmail} placeholder="you@example.com" />
-          </div>
-          <div style={{ marginBottom: 20 }}>
-            <FormField label="Password" value={password} onChange={setPassword} placeholder="••••••••" />
-          </div>
-
-          {error && (
-            <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(248,113,113,0.1)", color: "#f87171", fontSize: 13, marginBottom: 16 }}>
-              {error}
-            </div>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !email || !password}
-            style={{ ...btnStyle, width: "100%", padding: "12px", opacity: loading || !email || !password ? 0.5 : 1 }}
-          >
-            {loading ? "..." : isSignUp ? "Create Account" : "Sign In"}
-          </button>
-
-          <div style={{ textAlign: "center", marginTop: 16 }}>
-            <button
-              onClick={() => { setIsSignUp(!isSignUp); setError(""); }}
-              style={{ background: "none", border: "none", color: "#4ade80", fontSize: 13, cursor: "pointer", fontFamily: "inherit" }}
-            >
-              {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
-            </button>
-          </div>
         </div>
       </div>
     </div>
@@ -272,27 +360,17 @@ function CoachForm({ coach, onSave, onCancel, onDelete }) {
 }
 
 // ============ PLAYER FORM (with duplicate detection + coach notes) ============
-function PlayerForm({ player, events, onSave, onCancel, onDelete, onSaveNote, existingNote, allNotes, findDuplicate, isOnline, userName, userId }) {
+function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNote, existingNote, allNotes, findDuplicate, onOpenPlayer, isOnline, userName, userId }) {
   const [form, setForm] = useState(player || {
     name: "", jerseyNumber: "", jerseyColor: "#cc0000", jersey_number: "", jersey_color: "#cc0000",
     position: "", division: "", rating: "", notes: "", eventId: "", event_id: "",
+    ...(seed || {}),
   });
   const [myNote, setMyNote] = useState(existingNote?.notes || "");
   const [myRating, setMyRating] = useState(existingNote?.rating || "");
   const [noteSaved, setNoteSaved] = useState(false);
-  const [duplicate, setDuplicate] = useState(null);
 
-  const update = (f, v) => {
-    setForm((p) => ({ ...p, [f]: v }));
-    if ((f === "jerseyNumber" || f === "jersey_number" || f === "eventId" || f === "event_id") && findDuplicate) {
-      const jn = f.includes("jersey") ? v : (form.jerseyNumber || form.jersey_number);
-      const ev = f.includes("event") ? v : (form.eventId || form.event_id);
-      if (jn && ev) {
-        const dup = findDuplicate(jn, ev);
-        setDuplicate(dup && dup.id !== player?.id ? dup : null);
-      }
-    }
-  };
+  const update = (f, v) => setForm((p) => ({ ...p, [f]: v }));
 
   const handleSaveNote = () => {
     if (onSaveNote) {
@@ -302,10 +380,23 @@ function PlayerForm({ player, events, onSave, onCancel, onDelete, onSaveNote, ex
     }
   };
 
-  const colorPresets = ["#cc0000", "#0055aa", "#ffffff", "#000000", "#006633", "#ff6600", "#660099", "#ffcc00", "#00aacc", "#cc0066"];
+  const colorPresets = ["#000000", "#a8c0ef", "#7a2c1d", "#deb8af", "#8a30f5", "#cbcbcb", "#74f94d", "#f9d877", "#77a45a", "#dbe8d4", "#4a78d0", "#cc0000", "#ff6600", "#ffffff"];
   const jerseyNum = form.jerseyNumber || form.jersey_number || "";
   const jerseyCol = form.jerseyColor || form.jersey_color || "#cc0000";
   const eventId = form.eventId || form.event_id || "";
+
+  // Duplicate detection (new players only) — keyed on colour + number + event
+  const dup = (!player && findDuplicate) ? findDuplicate(jerseyNum, jerseyCol, eventId) : null;
+  const duplicate = dup && dup.id !== player?.id ? dup : null;
+
+  // Allow saving with just a colour + number — auto-name it if no name given
+  const canSave = !!(form.name?.trim() || String(jerseyNum).trim()) && !duplicate;
+  const handleSave = () => {
+    if (!canSave) return;
+    const autoName = form.name?.trim()
+      || `${colorName(jerseyCol)}${String(jerseyNum).trim() ? " #" + String(jerseyNum).trim() : ""}`;
+    onSave({ ...form, name: autoName });
+  };
 
   // Separate other coaches' notes from mine
   const otherNotes = (allNotes || []).filter(n => n.coach_user_id !== userId);
@@ -319,11 +410,16 @@ function PlayerForm({ player, events, onSave, onCancel, onDelete, onSaveNote, ex
 
       {duplicate && (
         <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.2)", marginBottom: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24", marginBottom: 4 }}>Player already scouted!</div>
-          <div style={{ fontSize: 12, color: "#aaa" }}>
-            #{duplicate.jersey_number || duplicate.jerseyNumber} {duplicate.name} was already added to this event.
-            {isOnline && " You can add your own notes on their profile instead."}
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#fbbf24", marginBottom: 4 }}>This player already exists</div>
+          <div style={{ fontSize: 12, color: "#aaa", marginBottom: 10 }}>
+            {colorName(duplicate.jersey_color || duplicate.jerseyColor || "#cc0000")} #{duplicate.jersey_number || duplicate.jerseyNumber} ({duplicate.name}) is already on the roster{eventId ? " for this event" : ""}. Open their profile to add your own assessment instead of creating a duplicate.
           </div>
+          {onOpenPlayer && (
+            <button onClick={() => onOpenPlayer(duplicate)}
+              style={{ ...btnSmall, color: "#fbbf24", background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.25)" }}>
+              Go to {duplicate.name}'s profile →
+            </button>
+          )}
         </div>
       )}
 
@@ -361,10 +457,6 @@ function PlayerForm({ player, events, onSave, onCancel, onDelete, onSaveNote, ex
             </select>
           </div>
         )}
-
-        <div style={{ marginTop: 12 }}>
-          <FormField label="General Scouting Notes" value={form.notes} onChange={(v) => update("notes", v)} textarea placeholder="Strengths, weaknesses, physical traits, technical ability..." />
-        </div>
 
         {/* OTHER COACHES' NOTES — READ ONLY */}
         {isOnline && player && otherNotes.length > 0 && (
@@ -419,8 +511,8 @@ function PlayerForm({ player, events, onSave, onCancel, onDelete, onSaveNote, ex
       </div>
 
       <div style={{ display: "flex", gap: 10, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
-        <button onClick={() => form.name.trim() && onSave(form)} disabled={!form.name.trim() || !!duplicate}
-          style={{ ...btnStyle, flex: 1, background: "linear-gradient(135deg, #0055aa, #2d6a8a)", opacity: form.name.trim() && !duplicate ? 1 : 0.4 }}>
+        <button onClick={handleSave} disabled={!canSave}
+          style={{ ...btnStyle, flex: 1, background: "linear-gradient(135deg, #0055aa, #2d6a8a)", opacity: canSave ? 1 : 0.4 }}>
           {player ? "Save Changes" : "Add Player"}
         </button>
         {player && onDelete && <button onClick={() => onDelete(player.id)} style={{ ...btnStyle, background: "rgba(248,113,113,0.1)", color: "#f87171" }}>Delete</button>}
@@ -628,7 +720,7 @@ function CoachSelector({ coaches, event, onToggle, onClose }) {
 
 // ============ MAIN APP ============
 export default function BriefCase() {
-  const { user, loading: authLoading, signIn, signUp, signOut } = useAuth();
+  const { user, loading: authLoading, signIn, signUp, signOut, resetPassword } = useAuth();
   const online = isSupabaseConfigured();
   const db = useDatabase(user?.id);
 
@@ -640,6 +732,10 @@ export default function BriefCase() {
   const [search, setSearch] = useState("");
   const [filterDiv, setFilterDiv] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
+  const [playerSort, setPlayerSort] = useState("recent"); // recent | color
+  const [teamFilter, setTeamFilter] = useState(null); // hex colour or null
+  const [playerSeed, setPlayerSeed] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Show auth screen if Supabase is configured but not logged in
   if (online && authLoading) {
@@ -651,10 +747,16 @@ export default function BriefCase() {
   }
 
   if (online && !user) {
-    return <AuthScreen onSignIn={signIn} onSignUp={signUp} />;
+    return <AuthScreen onSignIn={signIn} onSignUp={signUp} onResetPassword={resetPassword} />;
   }
 
-  const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer } = db;
+  const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, refresh } = db;
+
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try { await refresh(); } finally { setTimeout(() => setRefreshing(false), 400); }
+  };
 
   const filtered = coaches
     .filter(c => {
@@ -671,12 +773,48 @@ export default function BriefCase() {
     ? coaches.filter(c => (c.events || c.event_ids || []).includes(activeEvent.id)).sort((a, b) => a.name.localeCompare(b.name))
     : [];
 
+  const playerColor = (p) => (p.jersey_color || p.jerseyColor || "#cc0000");
+  const playerMatchesQuery = (p, q) => !q
+    || p.name?.toLowerCase().includes(q)
+    || p.position?.toLowerCase().includes(q)
+    || String(p.jersey_number || p.jerseyNumber || "").includes(q)
+    || colorName(playerColor(p)).toLowerCase().includes(q);
+
   const filteredPlayers = players
     .filter(p => {
-      const q = playerSearch.toLowerCase();
-      return !q || p.name?.toLowerCase().includes(q) || p.position?.toLowerCase().includes(q) || (p.jersey_number || p.jerseyNumber || "").includes(q);
+      const q = playerSearch.toLowerCase().trim();
+      const matchesSearch = playerMatchesQuery(p, q);
+      const matchesTeam = !teamFilter || playerColor(p).toLowerCase() === teamFilter.toLowerCase();
+      return matchesSearch && matchesTeam;
     })
-    .sort((a, b) => ((b.created_at || b.createdAt || "").localeCompare(a.created_at || a.createdAt || "")));
+    .sort((a, b) => {
+      if (playerSort === "color") {
+        const an = colorName(playerColor(a)), bn = colorName(playerColor(b));
+        if (an !== bn) return an.localeCompare(bn);
+        return String(a.jersey_number || "").localeCompare(String(b.jersey_number || ""), undefined, { numeric: true });
+      }
+      return ((b.created_at || b.createdAt || "").localeCompare(a.created_at || a.createdAt || ""));
+    });
+
+  // Distinct jersey colours present, for the "view team" filter bar
+  const teamGroups = Object.values(players.reduce((acc, p) => {
+    const hex = playerColor(p).toLowerCase();
+    if (!acc[hex]) acc[hex] = { hex, name: colorName(hex), count: 0 };
+    acc[hex].count++;
+    return acc;
+  }, {})).sort((a, b) => b.count - a.count);
+
+  // Build a prefill seed from a search query (number → jersey #, colour word → colour)
+  const seedFromQuery = (raw) => {
+    const q = (raw || "").trim();
+    if (!q) return null;
+    const seed = {};
+    if (/^\d+$/.test(q)) { seed.jerseyNumber = q; seed.jersey_number = q; }
+    const hex = nameToHex(q);
+    if (hex) { seed.jerseyColor = hex; seed.jersey_color = hex; }
+    return Object.keys(seed).length ? seed : null;
+  };
+  const handleAddPlayer = (seed = null) => { setEditingPlayer(null); setPlayerSeed(seed); setView("player-form"); };
 
   const handleSaveCoach = (data) => { saveCoach(data); setEditingCoach(null); setView("roster"); };
   const handleDeleteCoach = (id) => { dbDeleteCoach(id); setEditingCoach(null); setView("roster"); };
@@ -707,7 +845,7 @@ export default function BriefCase() {
               )}
               <button onClick={() => {
                 if (mode === "coaches") { setEditingCoach(null); setView("form"); }
-                else { setEditingPlayer(null); setView("player-form"); }
+                else { handleAddPlayer(null); }
               }} style={mode === "coaches" ? btnStyle : { ...btnStyle, background: "linear-gradient(135deg, #0055aa, #2d6a8a)" }}>
                 {mode === "coaches" ? "+ Coach" : "+ Player"}
               </button>
@@ -746,6 +884,12 @@ export default function BriefCase() {
                     <option value="">All Divs</option>
                     {divisions.map(d => <option key={d} value={d}>{d}</option>)}
                   </select>
+                )}
+                {online && (
+                  <button onClick={handleRefresh} title="Refresh"
+                    style={{ ...btnSmall, padding: "0 12px", color: refreshing ? "#4ade80" : "#aaa" }}>
+                    <span style={{ display: "inline-block", transform: refreshing ? "rotate(360deg)" : "none", transition: "transform 0.6s ease" }}>⟳</span>
+                  </button>
                 )}
               </div>
 
@@ -814,22 +958,67 @@ export default function BriefCase() {
           {/* PLAYER LIST */}
           {!db.loading && view === "player-list" && (
             <>
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                <input value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)} placeholder="Search players..."
+              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                <input value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)} placeholder="Search by name, number, or colour..."
                   style={{ flex: 1, padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, color: "#e0e0e0", fontSize: 14, fontFamily: "inherit", outline: "none" }} />
+                <select value={playerSort} onChange={(e) => setPlayerSort(e.target.value)}
+                  style={{ padding: "10px 12px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, color: "#aaa", fontSize: 13, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+                  <option value="recent">Newest</option>
+                  <option value="color">By colour</option>
+                </select>
+                {online && (
+                  <button onClick={handleRefresh} title="Refresh"
+                    style={{ ...btnSmall, padding: "0 12px", color: refreshing ? "#4ade80" : "#aaa" }}>
+                    <span style={{ display: "inline-block", transform: refreshing ? "rotate(360deg)" : "none", transition: "transform 0.6s ease" }}>⟳</span>
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#60a5fa", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Scouted Players ({filteredPlayers.length})</div>
-              {filteredPlayers.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "50px 0" }}>
-                  <div style={{ fontSize: 48, marginBottom: 12 }}>⚽</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#e0e0e0", marginBottom: 6 }}>No players scouted yet</div>
-                  <div style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>Tap "+ Player" to scout athletes</div>
-                  <button onClick={() => { setEditingPlayer(null); setView("player-form"); }}
-                    style={{ ...btnStyle, background: "linear-gradient(135deg, #0055aa, #2d6a8a)" }}>Scout First Player</button>
+
+              {/* TEAM FILTER — view players by jersey colour */}
+              {teamGroups.length > 1 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+                  <button onClick={() => setTeamFilter(null)}
+                    style={{ ...btnSmall, fontSize: 11, background: !teamFilter ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.04)", color: !teamFilter ? "#60a5fa" : "#888", border: !teamFilter ? "1px solid rgba(96,165,250,0.3)" : "1px solid rgba(255,255,255,0.06)" }}>
+                    All ({players.length})
+                  </button>
+                  {teamGroups.map(t => {
+                    const active = teamFilter && teamFilter.toLowerCase() === t.hex.toLowerCase();
+                    return (
+                      <button key={t.hex} onClick={() => setTeamFilter(active ? null : t.hex)}
+                        style={{ ...btnSmall, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 6, background: active ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.04)", color: active ? "#60a5fa" : "#aaa", border: active ? "1px solid rgba(96,165,250,0.3)" : "1px solid rgba(255,255,255,0.06)" }}>
+                        <span style={{ width: 12, height: 12, borderRadius: 4, background: t.hex, border: "1px solid rgba(255,255,255,0.25)" }} />
+                        View {t.name} Team ({t.count})
+                      </button>
+                    );
+                  })}
                 </div>
+              )}
+
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#60a5fa", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>
+                {teamFilter ? `${colorName(teamFilter)} Team` : "Scouted Players"} ({filteredPlayers.length})
+              </div>
+
+              {filteredPlayers.length === 0 ? (
+                playerSearch.trim() ? (
+                  <div style={{ textAlign: "center", padding: "40px 0" }}>
+                    <div style={{ fontSize: 40, marginBottom: 10 }}>🔍</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#e0e0e0", marginBottom: 4 }}>No player matches "{playerSearch.trim()}"</div>
+                    <div style={{ fontSize: 13, color: "#555", marginBottom: 18 }}>Want to add them?</div>
+                    <button onClick={() => handleAddPlayer(seedFromQuery(playerSearch))}
+                      style={{ ...btnStyle, background: "linear-gradient(135deg, #0055aa, #2d6a8a)" }}>+ Add Player</button>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: "50px 0" }}>
+                    <div style={{ fontSize: 48, marginBottom: 12 }}>⚽</div>
+                    <div style={{ fontSize: 16, fontWeight: 700, color: "#e0e0e0", marginBottom: 6 }}>No players scouted yet</div>
+                    <div style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>Tap "+ Player" to scout athletes</div>
+                    <button onClick={() => handleAddPlayer(null)}
+                      style={{ ...btnStyle, background: "linear-gradient(135deg, #0055aa, #2d6a8a)" }}>Scout First Player</button>
+                  </div>
+                )
               ) : filteredPlayers.map(p => (
                 <PlayerRow key={p.id} player={p} event={events.find(e => e.id === (p.event_id || p.eventId))}
-                  onClick={() => { setEditingPlayer(p); setView("player-form"); }} />
+                  onClick={() => { setEditingPlayer(p); setPlayerSeed(null); setView("player-form"); }} />
               ))}
             </>
           )}
@@ -837,10 +1026,12 @@ export default function BriefCase() {
           {/* PLAYER FORM */}
           {view === "player-form" && (
             <PlayerForm
+              key={editingPlayer?.id || (playerSeed ? "seeded-new" : "new")}
               player={editingPlayer}
+              seed={playerSeed}
               events={events}
               onSave={handleSavePlayer}
-              onCancel={() => { setEditingPlayer(null); setView("player-list"); }}
+              onCancel={() => { setEditingPlayer(null); setPlayerSeed(null); setView("player-list"); }}
               onDelete={editingPlayer ? handleDeletePlayer : null}
               onSaveNote={saveCoachNote}
               existingNote={editingPlayer ? getMyNoteForPlayer(editingPlayer.id) : null}
@@ -848,6 +1039,7 @@ export default function BriefCase() {
               userName={user?.user_metadata?.full_name || user?.email || "Unknown"}
               userId={user?.id}
               findDuplicate={findDuplicatePlayer}
+              onOpenPlayer={(p) => { setPlayerSeed(null); setEditingPlayer(p); setView("player-form"); }}
               isOnline={online && !!user}
             />
           )}
