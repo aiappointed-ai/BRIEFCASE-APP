@@ -424,18 +424,36 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
       )}
 
       <div style={{ flex: 1, overflow: "auto", paddingBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          <JerseyAvatar number={jerseyNum} color={jerseyCol} size={80} />
-          <div>
-            <div style={{ fontSize: 12, color: "#888", marginBottom: 8 }}>Jersey Color</div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              {colorPresets.map((c) => (
-                <button key={c} onClick={() => { update("jerseyColor", c); update("jersey_color", c); }}
-                  style={{ width: 28, height: 28, borderRadius: 8, background: c, border: jerseyCol === c ? "2px solid #4ade80" : "2px solid rgba(255,255,255,0.1)", cursor: "pointer" }} />
-              ))}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 14 }}>
+            <JerseyAvatar number={jerseyNum} color={jerseyCol} size={80} />
+            <div>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#666", letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 }}>Jersey Color</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: "#f0f0f0" }}>{colorName(jerseyCol)}</div>
+              <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>{(jerseyCol || "").toUpperCase()}</div>
             </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(108px, 1fr))", gap: 6 }}>
+            {colorPresets.map((c) => {
+              const selected = (jerseyCol || "").toLowerCase() === c.toLowerCase();
+              return (
+                <button key={c} onClick={() => { update("jerseyColor", c); update("jersey_color", c); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 10,
+                    background: selected ? "rgba(74,222,128,0.12)" : "rgba(255,255,255,0.03)",
+                    border: selected ? "1px solid rgba(74,222,128,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                    cursor: "pointer", fontFamily: "inherit", textAlign: "left",
+                  }}>
+                  <span style={{ width: 18, height: 18, borderRadius: 5, background: c, border: "1px solid rgba(255,255,255,0.25)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 600, color: selected ? "#4ade80" : "#ccc", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{colorName(c)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: "#666" }}>Custom:</span>
             <input type="color" value={jerseyCol} onChange={(e) => { update("jerseyColor", e.target.value); update("jersey_color", e.target.value); }}
-              style={{ marginTop: 8, width: 60, height: 28, border: "none", background: "none", cursor: "pointer" }} />
+              style={{ width: 44, height: 28, border: "none", background: "none", cursor: "pointer", padding: 0 }} />
           </div>
         </div>
 
