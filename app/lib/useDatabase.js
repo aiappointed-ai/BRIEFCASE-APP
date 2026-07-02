@@ -169,15 +169,20 @@ export function useDatabase(userId) {
       const clean = cleanPlayerData(data);
       if (data.id && players.find(p => p.id === data.id)) {
         const { data: u, error } = await supabase.from('players').update(clean).eq('id', data.id).select().single();
-        if (error) { console.error('Player update error:', error); return; }
+        if (error) { console.error('Player update error:', error); return null; }
         if (u) setPlayers(p => p.map(x => x.id === u.id ? u : x));
+        return u || null;
       } else {
         const { data: c, error } = await supabase.from('players').insert({ ...clean, scouted_by: userId }).select().single();
-        if (error) { console.error('Player insert error:', error); return; }
+        if (error) { console.error('Player insert error:', error); return null; }
         if (c) setPlayers(p => [c, ...p]);
+        return c || null;
       }
     } else {
-      setPlayers(p => { const n = data.id && p.find(x => x.id === data.id) ? p.map(x => x.id === data.id ? data : x) : [...p, { ...data, id: genId(), created_at: new Date().toISOString() }]; lsSave('bc_players', n); return n; });
+      const isEdit = data.id && players.find(x => x.id === data.id);
+      const local = isEdit ? data : { ...data, id: genId(), created_at: new Date().toISOString() };
+      setPlayers(p => { const n = isEdit ? p.map(x => x.id === data.id ? local : x) : [...p, local]; lsSave('bc_players', n); return n; });
+      return local;
     }
   };
 
@@ -212,12 +217,26 @@ export function useDatabase(userId) {
       (p.event_id || null) === ev
     ) || null;
   };
+  // Softer match: same jersey number in the same event but a DIFFERENT colour.
+  // Catches the same player being re-scouted when coaches read the shade differently.
+  const findSimilarPlayers = (jerseyNumber, eventId, excludeColor) => {
+    if (!jerseyNumber) return [];
+    const num = String(jerseyNumber).trim();
+    const ev = eventId || null;
+    const ex = (excludeColor || '').toLowerCase();
+    return players.filter(p =>
+      String(p.jersey_number || '').trim() === num &&
+      (p.event_id || null) === ev &&
+      (p.jersey_color || '').toLowerCase() !== ex
+    );
+  };
 
   return {
     coaches: online ? coaches.map(c => ({ ...c, events: c.event_ids || [] })) : coaches,
     events, players, coachNotes, loading,
     saveCoach, deleteCoach, saveEvent, deleteEvent, toggleCoachEvent,
-    savePlayer, deletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer,
+    savePlayer, deletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, findSimilarPlayers,
     refresh,
   };
 }
+
