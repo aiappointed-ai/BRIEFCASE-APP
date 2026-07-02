@@ -785,6 +785,15 @@ export default function BriefCase() {
   const [playerSeed, setPlayerSeed] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Default the scouting event to the most recent one (events are ordered newest-first).
+  // Kept above the early returns below so the hook order never changes (rules of hooks).
+  useEffect(() => {
+    const evs = db.events || [];
+    if (evs.length && (!scoutEvent || !evs.find(e => e.id === scoutEvent.id))) {
+      setScoutEvent(evs[0]);
+    }
+  }, [db.events]);
+
   // Show auth screen if Supabase is configured but not logged in
   if (online && authLoading) {
     return (
@@ -799,13 +808,6 @@ export default function BriefCase() {
   }
 
   const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, findSimilarPlayers, refresh } = db;
-
-  // Default the scouting event to the most recent one (events are ordered newest-first).
-  useEffect(() => {
-    if (events.length && (!scoutEvent || !events.find(e => e.id === scoutEvent.id))) {
-      setScoutEvent(events[0]);
-    }
-  }, [events]);
 
   const handleRefresh = async () => {
     if (refreshing) return;
