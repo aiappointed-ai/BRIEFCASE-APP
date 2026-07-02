@@ -361,7 +361,7 @@ function CoachForm({ coach, onSave, onCancel, onDelete }) {
 }
 
 // ============ PLAYER FORM (with duplicate detection + coach notes) ============
-function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNote, existingNote, allNotes, findDuplicate, onOpenPlayer, isOnline, userName, userId }) {
+function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNote, existingNote, allNotes, findDuplicate, findSimilar, onOpenPlayer, isOnline, userName, userId }) {
   const [form, setForm] = useState(player || {
     name: "", jerseyNumber: "", jerseyColor: "#cc0000", jersey_number: "", jersey_color: "#cc0000",
     position: "", division: "", rating: "", notes: "", eventId: "", event_id: "",
@@ -382,7 +382,7 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
   };
 
   // Boys showcase palette (Orange, Navy, Red, Yellow, Royal, Sky Blue, Silver, Forest, Burgundy, Black).
-  // Labels are resolved from NAMED_COLORS via colorName(), which still knows the girls' colours too.
+  // Labels resolve from NAMED_COLORS via colorName(), which still knows the girls' colours too.
   const colorPresets = ["#ff6600", "#0b2a6b", "#cc0000", "#ffd700", "#4a78d0", "#a8c0ef", "#cbcbcb", "#5b9a48", "#7a2c1d", "#000000"];
   const jerseyNum = form.jerseyNumber || form.jersey_number || "";
   const jerseyCol = form.jerseyColor || form.jersey_color || "#cc0000";
@@ -391,6 +391,8 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
   // Duplicate detection (new players only) — keyed on colour + number + event
   const dup = (!player && findDuplicate) ? findDuplicate(jerseyNum, jerseyCol, eventId) : null;
   const duplicate = dup && dup.id !== player?.id ? dup : null;
+  // Possible duplicates: same number + event, different colour (only when there's no exact match).
+  const similar = (!player && !duplicate && findSimilar) ? findSimilar(jerseyNum, eventId, jerseyCol) : [];
 
   // Allow saving with just a colour + number — auto-name it if no name given
   const canSave = !!(form.name?.trim() || String(jerseyNum).trim()) && !duplicate;
@@ -398,7 +400,9 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
     if (!canSave) return;
     const autoName = form.name?.trim()
       || `${colorName(jerseyCol)}${String(jerseyNum).trim() ? " #" + String(jerseyNum).trim() : ""}`;
-    onSave({ ...form, name: autoName });
+    // For a brand-new player, pass this coach's assessment so it is saved with the player.
+    const newNote = !player ? { rating: myRating, notes: myNote } : null;
+    onSave({ ...form, name: autoName }, newNote);
   };
 
   // Separate other coaches' notes from mine
@@ -423,6 +427,22 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
               Go to {duplicate.name}'s profile →
             </button>
           )}
+        </div>
+      )}
+
+      {!duplicate && similar.length > 0 && (
+        <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(96,165,250,0.06)", border: "1px solid rgba(96,165,250,0.2)", marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#60a5fa", marginBottom: 4 }}>Possible match already scouted</div>
+          <div style={{ fontSize: 12, color: "#aaa", marginBottom: 10 }}>
+            There{similar.length === 1 ? " is" : " are"} already {similar.length} player{similar.length === 1 ? "" : "s"} wearing #{String(jerseyNum).trim()} in this event. If it's the same player, open their profile and add your assessment instead of creating a duplicate.
+          </div>
+          {similar.map((sp) => (
+            <button key={sp.id} onClick={() => onOpenPlayer && onOpenPlayer(sp)}
+              style={{ ...btnSmall, display: "block", width: "100%", textAlign: "left", marginBottom: 6, color: "#60a5fa", background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.2)" }}>
+              {colorName(sp.jersey_color || sp.jerseyColor || "#cc0000")} #{sp.jersey_number || sp.jerseyNumber} — {sp.name} →
+            </button>
+          ))}
+          <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>Different player with the same number? Just carry on adding.</div>
         </div>
       )}
 
@@ -513,8 +533,8 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
           </div>
         )}
 
-        {/* YOUR NOTES — EDITABLE */}
-        {isOnline && player && (
+        {/* YOUR NOTES — EDITABLE (new players too: saved together with the player) */}
+        {isOnline && (
           <div style={{ marginTop: 16, padding: 16, background: "rgba(96,165,250,0.05)", borderRadius: 12, border: "1px solid rgba(96,165,250,0.15)" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: "#60a5fa", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>
               Your Assessment
@@ -523,10 +543,16 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
             <div style={{ marginTop: 8 }}>
               <FormField label="Your Notes" value={myNote} onChange={setMyNote} textarea placeholder="Your personal observations..." />
             </div>
-            <button onClick={handleSaveNote}
-              style={{ ...btnSmall, marginTop: 10, color: noteSaved ? "#4ade80" : "#60a5fa", background: noteSaved ? "rgba(74,222,128,0.1)" : "rgba(96,165,250,0.1)", border: `1px solid ${noteSaved ? "rgba(74,222,128,0.2)" : "rgba(96,165,250,0.2)"}` }}>
-              {noteSaved ? "Saved ✓" : existingNote ? "Update My Notes" : "Save My Notes"}
-            </button>
+            {player ? (
+              <button onClick={handleSaveNote}
+                style={{ ...btnSmall, marginTop: 10, color: noteSaved ? "#4ade80" : "#60a5fa", background: noteSaved ? "rgba(74,222,128,0.1)" : "rgba(96,165,250,0.1)", border: `1px solid ${noteSaved ? "rgba(74,222,128,0.2)" : "rgba(96,165,250,0.2)"}` }}>
+                {noteSaved ? "Saved ✓" : existingNote ? "Update My Notes" : "Save My Notes"}
+              </button>
+            ) : (
+              <div style={{ fontSize: 11, color: "#8aa", marginTop: 10, fontStyle: "italic" }}>
+                Your rating &amp; notes save automatically when you tap "Add Player" below.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -772,7 +798,7 @@ export default function BriefCase() {
     return <AuthScreen onSignIn={signIn} onSignUp={signUp} onResetPassword={resetPassword} />;
   }
 
-  const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, refresh } = db;
+  const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, findSimilarPlayers, refresh } = db;
 
   // Default the scouting event to the most recent one (events are ordered newest-first).
   useEffect(() => {
@@ -855,7 +881,15 @@ export default function BriefCase() {
   const handleDeleteCoach = (id) => { dbDeleteCoach(id); setEditingCoach(null); setView("roster"); };
   const handleSaveEvent = (data) => { saveEvent(data); setView("roster"); };
   const handleDeleteEvent = (id) => { dbDeleteEvent(id); setActiveEvent(null); setView("roster"); };
-  const handleSavePlayer = (data) => { savePlayer(data); setEditingPlayer(null); setView("player-list"); };
+  const userName = user?.user_metadata?.full_name || user?.email || "Unknown";
+  const handleSavePlayer = async (data, newNote) => {
+    const saved = await savePlayer(data);
+    if (saved && newNote && (String(newNote.rating || "").trim() || String(newNote.notes || "").trim())) {
+      await saveCoachNote(saved.id, { rating: newNote.rating || "", notes: newNote.notes || "" }, userName);
+    }
+    setEditingPlayer(null);
+    setView("player-list");
+  };
   const handleDeletePlayer = (id) => { dbDeletePlayer(id); setEditingPlayer(null); setView("player-list"); };
 
   return (
@@ -1083,6 +1117,7 @@ export default function BriefCase() {
               userName={user?.user_metadata?.full_name || user?.email || "Unknown"}
               userId={user?.id}
               findDuplicate={findDuplicatePlayer}
+              findSimilar={findSimilarPlayers}
               onOpenPlayer={(p) => { setPlayerSeed(null); setEditingPlayer(p); setView("player-form"); }}
               isOnline={online && !!user}
             />
