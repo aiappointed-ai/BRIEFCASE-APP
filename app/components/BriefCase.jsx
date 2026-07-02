@@ -32,6 +32,7 @@ const NAMED_COLORS = [
   { name: "Gold", hex: "#f9d877" },
   { name: "Yellow", hex: "#ffd700" },
   { name: "Lime", hex: "#74f94d" },
+  { name: "Forest", hex: "#5b9a48" },
   { name: "Green", hex: "#77a45a" },
   { name: "Aqua", hex: "#dbe8d4" },
   { name: "Teal", hex: "#009b8e" },
@@ -380,7 +381,9 @@ function PlayerForm({ player, seed, events, onSave, onCancel, onDelete, onSaveNo
     }
   };
 
-  const colorPresets = ["#000000", "#a8c0ef", "#7a2c1d", "#deb8af", "#8a30f5", "#cbcbcb", "#74f94d", "#f9d877", "#77a45a", "#dbe8d4", "#4a78d0", "#cc0000", "#ff6600", "#ffffff"];
+  // Boys showcase palette (Orange, Navy, Red, Yellow, Royal, Sky Blue, Silver, Forest, Burgundy, Black).
+  // Labels are resolved from NAMED_COLORS via colorName(), which still knows the girls' colours too.
+  const colorPresets = ["#ff6600", "#0b2a6b", "#cc0000", "#ffd700", "#4a78d0", "#a8c0ef", "#cbcbcb", "#5b9a48", "#7a2c1d", "#000000"];
   const jerseyNum = form.jerseyNumber || form.jersey_number || "";
   const jerseyCol = form.jerseyColor || form.jersey_color || "#cc0000";
   const eventId = form.eventId || form.event_id || "";
@@ -747,6 +750,7 @@ export default function BriefCase() {
   const [editingCoach, setEditingCoach] = useState(null);
   const [editingPlayer, setEditingPlayer] = useState(null);
   const [activeEvent, setActiveEvent] = useState(null);
+  const [scoutEvent, setScoutEvent] = useState(null);
   const [search, setSearch] = useState("");
   const [filterDiv, setFilterDiv] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
@@ -769,6 +773,13 @@ export default function BriefCase() {
   }
 
   const { coaches, events, players, saveCoach, deleteCoach: dbDeleteCoach, saveEvent, deleteEvent: dbDeleteEvent, toggleCoachEvent, savePlayer, deletePlayer: dbDeletePlayer, saveCoachNote, getMyNoteForPlayer, getAllNotesForPlayer, findDuplicatePlayer, refresh } = db;
+
+  // Default the scouting event to the most recent one (events are ordered newest-first).
+  useEffect(() => {
+    if (events.length && (!scoutEvent || !events.find(e => e.id === scoutEvent.id))) {
+      setScoutEvent(events[0]);
+    }
+  }, [events]);
 
   const handleRefresh = async () => {
     if (refreshing) return;
@@ -798,7 +809,10 @@ export default function BriefCase() {
     || String(p.jersey_number || p.jerseyNumber || "").includes(q)
     || colorName(playerColor(p)).toLowerCase().includes(q);
 
-  const filteredPlayers = players
+  // Only show players from the event currently being scouted (keeps boys and girls separate).
+  const eventPlayers = players.filter(p => !scoutEvent || (p.event_id || p.eventId) === scoutEvent.id);
+
+  const filteredPlayers = eventPlayers
     .filter(p => {
       const q = playerSearch.toLowerCase().trim();
       const matchesSearch = playerMatchesQuery(p, q);
@@ -815,7 +829,7 @@ export default function BriefCase() {
     });
 
   // Distinct jersey colours present, for the "view team" filter bar
-  const teamGroups = Object.values(players.reduce((acc, p) => {
+  const teamGroups = Object.values(eventPlayers.reduce((acc, p) => {
     const hex = playerColor(p).toLowerCase();
     if (!acc[hex]) acc[hex] = { hex, name: colorName(hex), count: 0 };
     acc[hex].count++;
@@ -832,7 +846,10 @@ export default function BriefCase() {
     if (hex) { seed.jerseyColor = hex; seed.jersey_color = hex; }
     return Object.keys(seed).length ? seed : null;
   };
-  const handleAddPlayer = (seed = null) => { setEditingPlayer(null); setPlayerSeed(seed); setView("player-form"); };
+  const handleAddPlayer = (seed = null) => {
+    const evSeed = scoutEvent ? { eventId: scoutEvent.id, event_id: scoutEvent.id } : {};
+    setEditingPlayer(null); setPlayerSeed({ ...evSeed, ...(seed || {}) }); setView("player-form");
+  };
 
   const handleSaveCoach = (data) => { saveCoach(data); setEditingCoach(null); setView("roster"); };
   const handleDeleteCoach = (id) => { dbDeleteCoach(id); setEditingCoach(null); setView("roster"); };
@@ -976,6 +993,15 @@ export default function BriefCase() {
           {/* PLAYER LIST */}
           {!db.loading && view === "player-list" && (
             <>
+              {events.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 10, fontWeight: 700, color: "#60a5fa", letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6 }}>Scouting Event</label>
+                  <select value={scoutEvent?.id || ""} onChange={(e) => setScoutEvent(events.find(ev => ev.id === e.target.value) || null)}
+                    style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(96,165,250,0.25)", borderRadius: 10, color: "#e0e0e0", fontSize: 14, fontWeight: 600, fontFamily: "inherit", outline: "none", cursor: "pointer" }}>
+                    {events.map(ev => <option key={ev.id} value={ev.id}>{ev.name}</option>)}
+                  </select>
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                 <input value={playerSearch} onChange={(e) => setPlayerSearch(e.target.value)} placeholder="Search by name, number, or colour..."
                   style={{ flex: 1, padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, color: "#e0e0e0", fontSize: 14, fontFamily: "inherit", outline: "none" }} />
@@ -997,7 +1023,7 @@ export default function BriefCase() {
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
                   <button onClick={() => setTeamFilter(null)}
                     style={{ ...btnSmall, fontSize: 11, background: !teamFilter ? "rgba(96,165,250,0.15)" : "rgba(255,255,255,0.04)", color: !teamFilter ? "#60a5fa" : "#888", border: !teamFilter ? "1px solid rgba(96,165,250,0.3)" : "1px solid rgba(255,255,255,0.06)" }}>
-                    All ({players.length})
+                    All ({eventPlayers.length})
                   </button>
                   {teamGroups.map(t => {
                     const active = teamFilter && teamFilter.toLowerCase() === t.hex.toLowerCase();
